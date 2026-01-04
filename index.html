@@ -33,6 +33,9 @@
                 <button onclick="showView('weekly')" id="btn-weekly" class="px-4 py-2 rounded-lg font-medium transition bg-white text-gray-700 hover:bg-gray-100">
                     Statistiques hebdomadaires
                 </button>
+                <button onclick="showView('monthly')" id="btn-monthly" class="px-4 py-2 rounded-lg font-medium transition bg-white text-gray-700 hover:bg-gray-100">
+                    Statistiques mensuelles
+                </button>
             </div>
 
             <!-- Chart Container -->
@@ -55,6 +58,22 @@
                     </label>
                 </div>
 
+                <!-- Checkboxes for monthly view -->
+                <div id="monthly-controls" class="hidden flex gap-3 mb-4 flex-wrap">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="check-km-monthly" checked class="w-4 h-4 text-indigo-600 rounded" onchange="updateMonthlyChart()">
+                        <span class="text-sm font-medium text-gray-700">Distance (km)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="check-min-monthly" checked class="w-4 h-4 text-amber-600 rounded" onchange="updateMonthlyChart()">
+                        <span class="text-sm font-medium text-gray-700">Temps (min)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="check-pace-monthly" checked class="w-4 h-4 text-purple-600 rounded" onchange="updateMonthlyChart()">
+                        <span class="text-sm font-medium text-gray-700">Allure (min/km)</span>
+                    </label>
+                </div>
+
                 <div style="position: relative; height: 400px;">
                     <canvas id="mainChart"></canvas>
                 </div>
@@ -68,6 +87,7 @@
     <script>
         let allData = [];
         let weeklyStats = [];
+        let monthlyStats = [];
         let currentChart = null;
         let currentView = 'distance';
 
@@ -102,6 +122,34 @@
                         });
                     }
                 }
+
+                // Calculate monthly stats
+                const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 
+                                   'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+                const monthlyData = {};
+                
+                allData.forEach(d => {
+                    const monthKey = `${d.date.getFullYear()}-${d.date.getMonth()}`;
+                    if (!monthlyData[monthKey]) {
+                        monthlyData[monthKey] = {
+                            year: d.date.getFullYear(),
+                            month: d.date.getMonth(),
+                            data: []
+                        };
+                    }
+                    monthlyData[monthKey].data.push(d);
+                });
+
+                monthlyStats = Object.values(monthlyData).map(m => {
+                    const totalKm = m.data.reduce((sum, d) => sum + d.distance, 0);
+                    const totalMin = m.data.reduce((sum, d) => sum + d.duree, 0);
+                    return {
+                        label: `${monthNames[m.month]} ${m.year}`,
+                        totalKm: totalKm,
+                        totalMin: totalMin,
+                        avgPace: totalMin / totalKm
+                    };
+                });
 
                 displayStats();
                 showView('distance');
@@ -152,7 +200,7 @@
             currentView = view;
             
             // Update buttons
-            ['distance', 'duree', 'pace', 'weekly'].forEach(v => {
+            ['distance', 'duree', 'pace', 'weekly', 'monthly'].forEach(v => {
                 const btn = document.getElementById(`btn-${v}`);
                 if (v === view) {
                     btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-indigo-600 text-white shadow-md';
@@ -166,15 +214,19 @@
                 distance: 'Distance par séance',
                 duree: 'Durée par séance',
                 pace: 'Allure par séance',
-                weekly: 'Statistiques hebdomadaires'
+                weekly: 'Statistiques hebdomadaires',
+                monthly: 'Statistiques mensuelles'
             };
             document.getElementById('chart-title').textContent = titles[view];
             document.getElementById('weekly-controls').classList.toggle('hidden', view !== 'weekly');
+            document.getElementById('monthly-controls').classList.toggle('hidden', view !== 'monthly');
             document.getElementById('pace-note').classList.toggle('hidden', view !== 'pace');
 
             // Update chart
             if (view === 'weekly') {
                 updateWeeklyChart();
+            } else if (view === 'monthly') {
+                updateMonthlyChart();
             } else if (view === 'distance') {
                 createLineChart('distance', 'Distance (km)', '#4f46e5');
             } else if (view === 'duree') {
