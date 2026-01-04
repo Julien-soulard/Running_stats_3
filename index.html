@@ -140,16 +140,24 @@
                     monthlyData[monthKey].data.push(d);
                 });
 
-                monthlyStats = Object.values(monthlyData).map(m => {
-                    const totalKm = m.data.reduce((sum, d) => sum + d.distance, 0);
-                    const totalMin = m.data.reduce((sum, d) => sum + d.duree, 0);
-                    return {
-                        label: `${monthNames[m.month]} ${m.year}`,
-                        totalKm: totalKm,
-                        totalMin: totalMin,
-                        avgPace: totalMin / totalKm
-                    };
-                });
+                monthlyStats = Object.values(monthlyData)
+                    .sort((a, b) => {
+                        if (a.year !== b.year) return a.year - b.year;
+                        return a.month - b.month;
+                    })
+                    .map(m => {
+                        const totalKm = m.data.reduce((sum, d) => sum + d.distance, 0);
+                        const totalMin = m.data.reduce((sum, d) => sum + d.duree, 0);
+                        return {
+                            label: `${monthNames[m.month]} ${m.year}`,
+                            totalKm: totalKm,
+                            totalMin: totalMin,
+                            avgPace: totalMin / totalKm
+                        };
+                    });
+
+                console.log('Data loaded:', allData.length, 'sessions');
+                console.log('Monthly stats:', monthlyStats);
 
                 displayStats();
                 showView('distance');
@@ -350,6 +358,80 @@
                 type: 'bar',
                 data: {
                     labels: weeklyStats.map(w => w.semaine),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label.includes('Allure')) {
+                                        const mins = Math.floor(context.parsed.y);
+                                        const secs = Math.floor((context.parsed.y - mins) * 60);
+                                        return `${context.dataset.label}: ${mins}:${secs.toString().padStart(2, '0')}/km`;
+                                    }
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateMonthlyChart() {
+            console.log('updateMonthlyChart called');
+            console.log('monthlyStats:', monthlyStats);
+            
+            if (currentChart) currentChart.destroy();
+
+            const showKm = document.getElementById('check-km-monthly').checked;
+            const showMin = document.getElementById('check-min-monthly').checked;
+            const showPace = document.getElementById('check-pace-monthly').checked;
+
+            const datasets = [];
+            
+            if (showKm) {
+                datasets.push({
+                    label: 'Distance totale (km)',
+                    data: monthlyStats.map(m => m.totalKm),
+                    backgroundColor: '#4f46e5',
+                    borderRadius: 8
+                });
+            }
+            
+            if (showMin) {
+                datasets.push({
+                    label: 'Temps total (min)',
+                    data: monthlyStats.map(m => m.totalMin),
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 8
+                });
+            }
+            
+            if (showPace) {
+                datasets.push({
+                    label: 'Allure moyenne (min/km)',
+                    data: monthlyStats.map(m => m.avgPace),
+                    backgroundColor: '#a855f7',
+                    borderRadius: 8
+                });
+            }
+
+            console.log('Creating chart with datasets:', datasets);
+
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            currentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: monthlyStats.map(m => m.label),
                     datasets: datasets
                 },
                 options: {
