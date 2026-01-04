@@ -4,332 +4,327 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Running Stats - Progression</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/recharts@2.5.0/dist/Recharts.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div id="root"></div>
-    
-    <script type="text/babel">
-        const { useState, useEffect } = React;
-        const { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = window.Recharts;
+<body class="bg-gradient-to-br from-blue-50 to-indigo-50">
+    <div id="app" class="w-full min-h-screen p-6">
+        <div class="max-w-7xl mx-auto">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2 flex items-center gap-3">
+                🏃 Progression Running
+            </h1>
+            <p class="text-gray-600 mb-6">Analyse de vos séances</p>
 
-        const RunningViz = () => {
-            const [view, setView] = useState('distance');
-            const [showKm, setShowKm] = useState(true);
-            const [showMin, setShowMin] = useState(true);
-            const [showPace, setShowPace] = useState(true);
-            const [data, setData] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
+            <!-- Stats Cards -->
+            <div id="stats-cards" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6"></div>
 
-            useEffect(() => {
-                Papa.parse('data.csv', {
-                    download: true,
-                    header: true,
-                    dynamicTyping: true,
-                    skipEmptyLines: true,
-                    complete: (results) => {
-                        console.log('CSV loaded:', results.data);
-                        const processedData = results.data.map(row => {
-                            const pace = row.duree_min / row.distance_km;
-                            const dateObj = new Date(row.date);
-                            const formattedDate = `${String(dateObj.getDate()).padStart(2, '0')}/${String(dateObj.getMonth() + 1).padStart(2, '0')}`;
-                            
-                            return {
-                                seance: row.seance,
-                                date: formattedDate,
-                                duree: row.duree_min,
-                                distance: row.distance_km,
-                                semaine: row.semaine,
-                                pace: pace
-                            };
+            <!-- Tabs -->
+            <div class="flex gap-2 mb-6 flex-wrap">
+                <button onclick="showView('distance')" id="btn-distance" class="px-4 py-2 rounded-lg font-medium transition bg-indigo-600 text-white shadow-md">
+                    Distance par séance
+                </button>
+                <button onclick="showView('duree')" id="btn-duree" class="px-4 py-2 rounded-lg font-medium transition bg-white text-gray-700 hover:bg-gray-100">
+                    Durée par séance
+                </button>
+                <button onclick="showView('pace')" id="btn-pace" class="px-4 py-2 rounded-lg font-medium transition bg-white text-gray-700 hover:bg-gray-100">
+                    Allure par séance
+                </button>
+                <button onclick="showView('weekly')" id="btn-weekly" class="px-4 py-2 rounded-lg font-medium transition bg-white text-gray-700 hover:bg-gray-100">
+                    Statistiques hebdomadaires
+                </button>
+            </div>
+
+            <!-- Chart Container -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 id="chart-title" class="text-xl font-semibold text-gray-800 mb-4">Distance par séance</h2>
+                
+                <!-- Checkboxes for weekly view -->
+                <div id="weekly-controls" class="hidden flex gap-3 mb-4 flex-wrap">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="check-km" checked class="w-4 h-4 text-indigo-600 rounded" onchange="updateWeeklyChart()">
+                        <span class="text-sm font-medium text-gray-700">Distance (km)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="check-min" checked class="w-4 h-4 text-amber-600 rounded" onchange="updateWeeklyChart()">
+                        <span class="text-sm font-medium text-gray-700">Temps (min)</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="check-pace" checked class="w-4 h-4 text-purple-600 rounded" onchange="updateWeeklyChart()">
+                        <span class="text-sm font-medium text-gray-700">Allure (min/km)</span>
+                    </label>
+                </div>
+
+                <div style="position: relative; height: 400px;">
+                    <canvas id="mainChart"></canvas>
+                </div>
+                <p id="pace-note" class="text-sm text-gray-600 mt-2 text-center hidden">
+                    ⬇️ Plus la courbe descend, plus vous courez vite
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let weeklyStats = [];
+        let currentChart = null;
+        let currentView = 'distance';
+
+        // Load CSV data
+        Papa.parse('data.csv', {
+            download: true,
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                allData = results.data.map(row => ({
+                    seance: row.seance,
+                    date: new Date(row.date),
+                    duree: row.duree_min,
+                    distance: row.distance_km,
+                    semaine: row.semaine,
+                    pace: row.duree_min / row.distance_km
+                }));
+
+                // Calculate weekly stats
+                const maxWeek = Math.max(...allData.map(d => d.semaine));
+                for (let week = 1; week <= maxWeek; week++) {
+                    const weekData = allData.filter(d => d.semaine === week);
+                    if (weekData.length > 0) {
+                        const totalKm = weekData.reduce((sum, d) => sum + d.distance, 0);
+                        const totalMin = weekData.reduce((sum, d) => sum + d.duree, 0);
+                        weeklyStats.push({
+                            semaine: `S${week}`,
+                            totalKm: totalKm,
+                            totalMin: totalMin,
+                            avgPace: totalMin / totalKm
                         });
-                        setData(processedData);
-                        setLoading(false);
-                    },
-                    error: (error) => {
-                        console.error('Error loading CSV:', error);
-                        setError('Erreur lors du chargement des données');
-                        setLoading(false);
                     }
-                });
-            }, []);
-
-            if (loading) {
-                return (
-                    <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-                        <div className="text-2xl text-gray-600">Chargement des données...</div>
-                    </div>
-                );
-            }
-
-            if (error) {
-                return (
-                    <div className="w-full h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-                        <div className="text-2xl text-red-600">{error}</div>
-                    </div>
-                );
-            }
-
-            const calculatedWeeklyStats = [];
-            const maxWeek = Math.max(...data.map(d => d.semaine));
-            
-            for (let week = 1; week <= maxWeek; week++) {
-                const weekData = data.filter(d => d.semaine === week);
-                if (weekData.length > 0) {
-                    const totalKm = weekData.reduce((sum, d) => sum + d.distance, 0);
-                    const totalMin = weekData.reduce((sum, d) => sum + d.duree, 0);
-                    const avgPace = totalMin / totalKm;
-                    calculatedWeeklyStats.push({
-                        semaine: `S${week}`,
-                        totalKm: parseFloat(totalKm.toFixed(2)),
-                        totalMin: Math.round(totalMin),
-                        avgPace: parseFloat(avgPace.toFixed(2))
-                    });
                 }
-            }
 
-            const totalDistance = data.reduce((sum, d) => sum + d.distance, 0);
-            const totalDuration = data.reduce((sum, d) => sum + d.duree, 0);
+                displayStats();
+                showView('distance');
+            },
+            error: function(error) {
+                console.error('Error loading CSV:', error);
+                document.getElementById('app').innerHTML = '<div class="text-center text-red-600 text-2xl mt-20">Erreur lors du chargement des données</div>';
+            }
+        });
+
+        function displayStats() {
+            const totalDistance = allData.reduce((sum, d) => sum + d.distance, 0);
+            const totalDuration = allData.reduce((sum, d) => sum + d.duree, 0);
             const avgPace = totalDuration / totalDistance;
 
-            return (
-                <div className="w-full min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-6">
-                    <div className="max-w-7xl mx-auto">
-                        <h1 className="text-3xl font-bold text-gray-800 mb-2 flex items-center gap-3">
-                            🏃 Progression Running
-                        </h1>
-                        <p className="text-gray-600 mb-6">Analyse de vos séances</p>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                            <div className="bg-white rounded-lg shadow-md p-5">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-gray-500 text-sm">Distance totale</p>
-                                        <p className="text-3xl font-bold text-indigo-600">{totalDistance.toFixed(1)} km</p>
-                                    </div>
-                                    <span className="text-4xl">📈</span>
-                                </div>
-                            </div>
-                            
-                            <div className="bg-white rounded-lg shadow-md p-5">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-gray-500 text-sm">Temps total</p>
-                                        <p className="text-3xl font-bold text-green-600">{Math.floor(totalDuration / 60)}h {Math.floor(totalDuration % 60)}min</p>
-                                    </div>
-                                    <span className="text-4xl">⏱️</span>
-                                </div>
-                            </div>
-                            
-                            <div className="bg-white rounded-lg shadow-md p-5">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <p className="text-gray-500 text-sm">Allure moyenne</p>
-                                        <p className="text-3xl font-bold text-purple-600">{Math.floor(avgPace)}:{Math.floor((avgPace % 1) * 60).toString().padStart(2, '0')}/km</p>
-                                    </div>
-                                    <span className="text-4xl">⚡</span>
-                                </div>
-                            </div>
+            document.getElementById('stats-cards').innerHTML = `
+                <div class="bg-white rounded-lg shadow-md p-5">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">Distance totale</p>
+                            <p class="text-3xl font-bold text-indigo-600">${totalDistance.toFixed(1)} km</p>
                         </div>
-
-                        <div className="flex gap-2 mb-6 flex-wrap">
-                            <button
-                                onClick={() => setView('distance')}
-                                className={`px-4 py-2 rounded-lg font-medium transition ${
-                                    view === 'distance' 
-                                        ? 'bg-indigo-600 text-white shadow-md' 
-                                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                                }`}
-                            >
-                                Distance par séance
-                            </button>
-                            <button
-                                onClick={() => setView('duree')}
-                                className={`px-4 py-2 rounded-lg font-medium transition ${
-                                    view === 'duree' 
-                                        ? 'bg-indigo-600 text-white shadow-md' 
-                                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                                }`}
-                            >
-                                Durée par séance
-                            </button>
-                            <button
-                                onClick={() => setView('pace')}
-                                className={`px-4 py-2 rounded-lg font-medium transition ${
-                                    view === 'pace' 
-                                        ? 'bg-indigo-600 text-white shadow-md' 
-                                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                                }`}
-                            >
-                                Allure par séance
-                            </button>
-                            <button
-                                onClick={() => setView('weekly')}
-                                className={`px-4 py-2 rounded-lg font-medium transition ${
-                                    view === 'weekly' 
-                                        ? 'bg-indigo-600 text-white shadow-md' 
-                                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                                }`}
-                            >
-                                Statistiques hebdomadaires
-                            </button>
-                        </div>
-
-                        <div className="bg-white rounded-lg shadow-lg p-6">
-                            {view === 'distance' && (
-                                <>
-                                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Distance par séance</h2>
-                                    <ResponsiveContainer width="100%" height={400}>
-                                        <LineChart data={data}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                            <XAxis dataKey="seance" stroke="#666" />
-                                            <YAxis stroke="#666" label={{ value: 'Distance (km)', angle: -90, position: 'insideLeft' }} />
-                                            <Tooltip 
-                                                contentStyle={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px' }}
-                                                formatter={(value) => [`${value} km`, 'Distance']}
-                                            />
-                                            <Legend />
-                                            <Line 
-                                                type="monotone" 
-                                                dataKey="distance" 
-                                                stroke="#4f46e5" 
-                                                strokeWidth={3}
-                                                dot={{ fill: '#4f46e5', r: 5 }}
-                                                activeDot={{ r: 7 }}
-                                                name="Distance (km)"
-                                            />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </>
-                            )}
-
-                            {view === 'duree' && (
-                                <>
-                                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Durée par séance</h2>
-                                    <ResponsiveContainer width="100%" height={400}>
-                                        <BarChart data={data}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                            <XAxis dataKey="seance" stroke="#666" />
-                                            <YAxis stroke="#666" label={{ value: 'Durée (min)', angle: -90, position: 'insideLeft' }} />
-                                            <Tooltip 
-                                                contentStyle={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px' }}
-                                                formatter={(value) => [`${value.toFixed(1)} min`, 'Durée']}
-                                            />
-                                            <Legend />
-                                            <Bar dataKey="duree" fill="#10b981" name="Durée (min)" radius={[8, 8, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </>
-                            )}
-
-                            {view === 'pace' && (
-                                <>
-                                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Allure par séance</h2>
-                                    <ResponsiveContainer width="100%" height={400}>
-                                        <LineChart data={data}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                            <XAxis dataKey="seance" stroke="#666" />
-                                            <YAxis 
-                                                stroke="#666" 
-                                                label={{ value: 'Allure (min/km)', angle: -90, position: 'insideLeft' }}
-                                                domain={[7, 11]}
-                                                ticks={[7, 8, 9, 10, 11]}
-                                            />
-                                            <Tooltip 
-                                                contentStyle={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px' }}
-                                                formatter={(value) => {
-                                                    const mins = Math.floor(value);
-                                                    const secs = Math.floor((value - mins) * 60);
-                                                    return [`${mins}:${secs.toString().padStart(2, '0')}/km`, 'Allure'];
-                                                }}
-                                            />
-                                            <Legend />
-                                            <Line 
-                                                type="monotone" 
-                                                dataKey="pace" 
-                                                stroke="#a855f7" 
-                                                strokeWidth={3}
-                                                dot={{ fill: '#a855f7', r: 5 }}
-                                                activeDot={{ r: 7 }}
-                                                name="Allure (min/km)"
-                                            />
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                    <p className="text-sm text-gray-600 mt-2 text-center">
-                                        ⬇️ Plus la courbe descend, plus vous courez vite
-                                    </p>
-                                </>
-                            )}
-
-                            {view === 'weekly' && (
-                                <>
-                                    <h2 className="text-xl font-semibold text-gray-800 mb-4">Statistiques hebdomadaires</h2>
-                                    <div className="flex gap-3 mb-4 flex-wrap">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={showKm}
-                                                onChange={(e) => setShowKm(e.target.checked)}
-                                                className="w-4 h-4 text-indigo-600 rounded"
-                                            />
-                                            <span className="text-sm font-medium text-gray-700">Distance (km)</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={showMin}
-                                                onChange={(e) => setShowMin(e.target.checked)}
-                                                className="w-4 h-4 text-amber-600 rounded"
-                                            />
-                                            <span className="text-sm font-medium text-gray-700">Temps (min)</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={showPace}
-                                                onChange={(e) => setShowPace(e.target.checked)}
-                                                className="w-4 h-4 text-purple-600 rounded"
-                                            />
-                                            <span className="text-sm font-medium text-gray-700">Allure (min/km)</span>
-                                        </label>
-                                    </div>
-                                    <ResponsiveContainer width="100%" height={400}>
-                                        <BarChart data={calculatedWeeklyStats}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                                            <XAxis dataKey="semaine" stroke="#666" />
-                                            <YAxis stroke="#666" />
-                                            <Tooltip 
-                                                contentStyle={{ backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px' }}
-                                                formatter={(value, name) => {
-                                                    if (name === 'Allure moyenne (min/km)') {
-                                                        const mins = Math.floor(value);
-                                                        const secs = Math.floor((value - mins) * 60);
-                                                        return [`${mins}:${secs.toString().padStart(2, '0')}/km`, name];
-                                                    }
-                                                    return [value.toFixed(2), name];
-                                                }}
-                                            />
-                                            <Legend />
-                                            {showKm && <Bar dataKey="totalKm" fill="#4f46e5" name="Distance totale (km)" radius={[8, 8, 0, 0]} />}
-                                            {showMin && <Bar dataKey="totalMin" fill="#f59e0b" name="Temps total (min)" radius={[8, 8, 0, 0]} />}
-                                            {showPace && <Bar dataKey="avgPace" fill="#a855f7" name="Allure moyenne (min/km)" radius={[8, 8, 0, 0]} />}
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </>
-                            )}
-                        </div>
+                        <span class="text-4xl">📈</span>
                     </div>
                 </div>
-            );
-        };
+                <div class="bg-white rounded-lg shadow-md p-5">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">Temps total</p>
+                            <p class="text-3xl font-bold text-green-600">${Math.floor(totalDuration / 60)}h ${Math.floor(totalDuration % 60)}min</p>
+                        </div>
+                        <span class="text-4xl">⏱️</span>
+                    </div>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-5">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">Allure moyenne</p>
+                            <p class="text-3xl font-bold text-purple-600">${Math.floor(avgPace)}:${Math.floor((avgPace % 1) * 60).toString().padStart(2, '0')}/km</p>
+                        </div>
+                        <span class="text-4xl">⚡</span>
+                    </div>
+                </div>
+            `;
+        }
 
-        ReactDOM.render(<RunningViz />, document.getElementById('root'));
+        function showView(view) {
+            currentView = view;
+            
+            // Update buttons
+            ['distance', 'duree', 'pace', 'weekly'].forEach(v => {
+                const btn = document.getElementById(`btn-${v}`);
+                if (v === view) {
+                    btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-indigo-600 text-white shadow-md';
+                } else {
+                    btn.className = 'px-4 py-2 rounded-lg font-medium transition bg-white text-gray-700 hover:bg-gray-100';
+                }
+            });
+
+            // Update title and controls
+            const titles = {
+                distance: 'Distance par séance',
+                duree: 'Durée par séance',
+                pace: 'Allure par séance',
+                weekly: 'Statistiques hebdomadaires'
+            };
+            document.getElementById('chart-title').textContent = titles[view];
+            document.getElementById('weekly-controls').classList.toggle('hidden', view !== 'weekly');
+            document.getElementById('pace-note').classList.toggle('hidden', view !== 'pace');
+
+            // Update chart
+            if (view === 'weekly') {
+                updateWeeklyChart();
+            } else if (view === 'distance') {
+                createLineChart('distance', 'Distance (km)', '#4f46e5');
+            } else if (view === 'duree') {
+                createBarChart('duree', 'Durée (min)', '#10b981');
+            } else if (view === 'pace') {
+                createLineChart('pace', 'Allure (min/km)', '#a855f7', true);
+            }
+        }
+
+        function createLineChart(dataKey, label, color, reversed = false) {
+            if (currentChart) currentChart.destroy();
+
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            currentChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: allData.map(d => d.seance),
+                    datasets: [{
+                        label: label,
+                        data: allData.map(d => d[dataKey]),
+                        borderColor: color,
+                        backgroundColor: color,
+                        borderWidth: 3,
+                        tension: 0.1,
+                        pointRadius: 5,
+                        pointHoverRadius: 7
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            reverse: reversed,
+                            beginAtZero: false
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (dataKey === 'pace') {
+                                        const mins = Math.floor(context.parsed.y);
+                                        const secs = Math.floor((context.parsed.y - mins) * 60);
+                                        return `${label}: ${mins}:${secs.toString().padStart(2, '0')}/km`;
+                                    }
+                                    return `${label}: ${context.parsed.y.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createBarChart(dataKey, label, color) {
+            if (currentChart) currentChart.destroy();
+
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            currentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: allData.map(d => d.seance),
+                    datasets: [{
+                        label: label,
+                        data: allData.map(d => d[dataKey]),
+                        backgroundColor: color,
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateWeeklyChart() {
+            if (currentChart) currentChart.destroy();
+
+            const showKm = document.getElementById('check-km').checked;
+            const showMin = document.getElementById('check-min').checked;
+            const showPace = document.getElementById('check-pace').checked;
+
+            const datasets = [];
+            
+            if (showKm) {
+                datasets.push({
+                    label: 'Distance totale (km)',
+                    data: weeklyStats.map(w => w.totalKm),
+                    backgroundColor: '#4f46e5',
+                    borderRadius: 8
+                });
+            }
+            
+            if (showMin) {
+                datasets.push({
+                    label: 'Temps total (min)',
+                    data: weeklyStats.map(w => w.totalMin),
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 8
+                });
+            }
+            
+            if (showPace) {
+                datasets.push({
+                    label: 'Allure moyenne (min/km)',
+                    data: weeklyStats.map(w => w.avgPace),
+                    backgroundColor: '#a855f7',
+                    borderRadius: 8
+                });
+            }
+
+            const ctx = document.getElementById('mainChart').getContext('2d');
+            currentChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: weeklyStats.map(w => w.semaine),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label.includes('Allure')) {
+                                        const mins = Math.floor(context.parsed.y);
+                                        const secs = Math.floor((context.parsed.y - mins) * 60);
+                                        return `${context.dataset.label}: ${mins}:${secs.toString().padStart(2, '0')}/km`;
+                                    }
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>
